@@ -378,7 +378,7 @@ namespace StackExchange.Redis
         {
             if (server == null) return false;
             
-            Console.WriteLine("[QueueToBacklogAndDisconnect] Starting - forcing disconnection then queuing to backlog");
+            Console.WriteLine("[QueueToBacklogAndDisconnect] Starting connection drain for MOVED response");
             
             // Determine which connection type to use based on the message
             var connectionType = message.IsForSubscriptionBridge ? ConnectionType.Subscription : ConnectionType.Interactive;
@@ -390,11 +390,18 @@ namespace StackExchange.Redis
                 var connection = bridge.TryConnect(null);
                 if (connection != null)
                 {
-                    Console.WriteLine("[QueueToBacklogAndDisconnect] Disposing connection to force reconnection");
-                    // First, immediately dispose the broken connection
-                    // This prevents the backlog from trying to use it
-                    connection.Dispose();
-                    Console.WriteLine("[QueueToBacklogAndDisconnect] Connection disposed");
+                    // Check if socket is still healthy
+                    if (!connection.IsSocketHealthy())
+                    {
+                        Console.WriteLine("[QueueToBacklogAndDisconnect] Socket appears broken, starting drain to complete pending responses");
+                        // Socket is broken - drain to complete pending messages, then dispose
+                        connection.StartDraining();
+                    }
+                    else
+                    {
+                        Console.WriteLine("[QueueToBacklogAndDisconnect] Socket appears healthy, continuing without drain");
+                        // Socket is healthy - no need to drain or dispose, just redirect the message via TryResend
+                    }
                 }
             }
             

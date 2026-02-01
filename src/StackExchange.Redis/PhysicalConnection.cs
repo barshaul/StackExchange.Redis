@@ -1971,12 +1971,6 @@ namespace StackExchange.Redis
             _readStatus = ReadStatus.MatchResultComplete;
             _activeMessage = null;
 
-            // Check if draining is complete - if so, dispose connection
-            if (_isDraining)
-            {
-                CheckDrainComplete();
-            }
-
             static bool ProcessHighIntegrityResponseToken(Message message, in RawResult result, PhysicalBridge? bridge)
             {
                 bool isValid = false;

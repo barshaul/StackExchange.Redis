@@ -378,7 +378,7 @@ namespace StackExchange.Redis
         {
             if (server == null) return false;
             
-            var bridge = server.GetBridge(message, create: false);
+            var bridge = server.GetBridge(message.Command, create: false);
             if (bridge == null) return false;
             
             // Reset message state for requeueing

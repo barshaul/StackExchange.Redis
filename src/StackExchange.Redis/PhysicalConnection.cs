@@ -42,10 +42,6 @@ namespace StackExchange.Redis
 
         // things sent to this physical, but not yet received
         private readonly Queue<Message> _writtenAwaitingResponse = new Queue<Message>();
-        
-        // Connection draining state - when true, connection will complete existing messages then auto-dispose
-        private volatile bool _isDraining = false;
-        private int _drainStartTicks = 0;
 
         private Message? _awaitingToken;
 
@@ -87,51 +83,6 @@ namespace StackExchange.Redis
 
         private Socket? _socket;
         internal Socket? VolatileSocket => Volatile.Read(ref _socket);
-
-        /// <summary>
-        /// Starts draining the connection - completes existing messages in _writtenAwaitingResponse, 
-        /// then auto-disposes the connection. This prevents canceling messages that have valid 
-        /// responses in the socket buffer.
-        /// </summary>
-        internal void StartDraining()
-        {
-            Console.WriteLine("[StartDraining] Marking connection as draining");
-            _isDraining = true;
-            _drainStartTicks = Environment.TickCount;
-        }
-
-        /// <summary>
-        /// Checks if the drain is complete. If all pending messages have been processed,
-        /// or if the drain has exceeded timeout, disposes the connection.
-        /// </summary>
-        private void CheckDrainComplete()
-        {
-            const int DRAIN_TIMEOUT_MS = 5000; // 5 second timeout for drain
-            
-            lock (_writtenAwaitingResponse)
-            {
-                var pendingCount = _writtenAwaitingResponse.Count;
-                Console.WriteLine($"[CheckDrainComplete] Pending messages: {pendingCount}");
-                
-                if (pendingCount == 0)
-                {
-                    // All pending requests completed - safe to dispose
-                    Console.WriteLine("[CheckDrainComplete] All messages drained, disposing connection");
-                    _isDraining = false; // Reset before dispose to avoid re-entry
-                    Dispose();
-                    return;
-                }
-            }
-            
-            // Check for timeout
-            var elapsed = unchecked(Environment.TickCount - _drainStartTicks);
-            if (elapsed > DRAIN_TIMEOUT_MS)
-            {
-                Console.WriteLine($"[CheckDrainComplete] Drain timeout ({elapsed}ms), forcing disposal");
-                _isDraining = false; // Reset before dispose to avoid re-entry
-                Dispose();
-            }
-        }
 
         /// <summary>
         /// Checks if the underlying socket appears to be in a healthy state.

@@ -371,14 +371,14 @@ namespace StackExchange.Redis
         }
 
         /// <summary>
-        /// Queues a message to backlog and ensures reconnection will occur.
-        /// Used when we detect a broken connection and need to retry after reconnect.
+        /// Queues a message to backlog and disposes broken connection.
+        /// Used when we detect a MOVED response with a broken socket.
         /// </summary>
         internal bool QueueToBacklogAndDisconnect(Message message, ServerEndPoint? server)
         {
             if (server == null) return false;
             
-            Console.WriteLine("[QueueToBacklogAndDisconnect] Starting connection drain for MOVED response");
+            Console.WriteLine("[QueueToBacklogAndDisconnect] Handling MOVED response");
             
             // Determine which connection type to use based on the message
             var connectionType = message.IsForSubscriptionBridge ? ConnectionType.Subscription : ConnectionType.Interactive;
@@ -393,19 +393,20 @@ namespace StackExchange.Redis
                     // Check if socket is still healthy
                     if (!connection.IsSocketHealthy())
                     {
-                        Console.WriteLine("[QueueToBacklogAndDisconnect] Socket appears broken, starting drain to complete pending responses");
-                        // Socket is broken - drain to complete pending messages, then dispose
-                        connection.StartDraining();
+                        Console.WriteLine("[QueueToBacklogAndDisconnect] Socket appears broken, disposing connection");
+                        // Socket is broken - dispose immediately to trigger reconnection
+                        // The message will be retried on a new connection
+                        connection.Dispose();
                     }
                     else
                     {
-                        Console.WriteLine("[QueueToBacklogAndDisconnect] Socket appears healthy, continuing without drain");
-                        // Socket is healthy - no need to drain or dispose, just redirect the message via TryResend
+                        Console.WriteLine("[QueueToBacklogAndDisconnect] Socket appears healthy, no disposal needed");
+                        // Socket is healthy - just redirect the message via TryResend
                     }
                 }
             }
             
-            // Now queue the message to backlog - it will be retried after reconnection
+            // Queue the message to backlog - it will be retried on a healthy connection
             if (TryResend(message.GetHashSlot(ServerSelectionStrategy), message, server.EndPoint, isMoved: true))
             {
                 Console.WriteLine("[QueueToBacklogAndDisconnect] Message queued to backlog successfully");

@@ -380,20 +380,26 @@ namespace StackExchange.Redis
             
             Console.WriteLine("[QueueToBacklogAndDisconnect] Starting - forcing disconnection then queuing to backlog");
             
-            var bridge = server.GetBridge(message.ConnectionType, create: false);
-            var connection = bridge?.GetConnection(null);
+            // Determine which connection type to use based on the message
+            var connectionType = message.IsForSubscriptionBridge ? ConnectionType.Subscription : ConnectionType.Interactive;
+            var bridge = server.GetBridge(connectionType, create: false);
             
-            if (connection != null && bridge != null)
+            if (bridge != null)
             {
-                Console.WriteLine("[QueueToBacklogAndDisconnect] Disposing connection to force reconnection");
-                // First, immediately dispose the broken connection
-                // This prevents the backlog from trying to use it
-                connection.Dispose();
-                Console.WriteLine("[QueueToBacklogAndDisconnect] Connection disposed");
+                // Access the physical connection directly from the bridge
+                var connection = bridge.TryConnect(null);
+                if (connection != null)
+                {
+                    Console.WriteLine("[QueueToBacklogAndDisconnect] Disposing connection to force reconnection");
+                    // First, immediately dispose the broken connection
+                    // This prevents the backlog from trying to use it
+                    connection.Dispose();
+                    Console.WriteLine("[QueueToBacklogAndDisconnect] Connection disposed");
+                }
             }
             
             // Now queue the message to backlog - it will be retried after reconnection
-            if (TryResend(message.HashSlot, message, server.EndPoint, isMoved: true))
+            if (TryResend(message.GetHashSlot(ServerSelectionStrategy), message, server.EndPoint, isMoved: true))
             {
                 Console.WriteLine("[QueueToBacklogAndDisconnect] Message queued to backlog successfully");
                 return true;

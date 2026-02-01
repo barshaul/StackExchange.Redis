@@ -93,6 +93,7 @@ namespace StackExchange.Redis
         internal bool IsSocketHealthy()
         {
             var socket = VolatileSocket;
+            Console.WriteLine($"[IsSocketHealthy] Socket is null: {socket == null}");
             if (socket == null) return false;
             
             try
@@ -103,16 +104,21 @@ namespace StackExchange.Redis
                 bool readable = socket.Poll(1, SelectMode.SelectRead);
                 bool hasData = socket.Available > 0;
                 
+                Console.WriteLine($"[IsSocketHealthy] Readable: {readable}, HasData: {hasData}, Available: {socket.Available}");
+                
                 // Socket is healthy if:
                 // - Not readable (no pending data), OR
                 // - Readable AND has data (normal case)
                 // Socket is broken if:
                 // - Readable BUT no data (socket closed)
-                return !readable || hasData;
+                bool isHealthy = !readable || hasData;
+                Console.WriteLine($"[IsSocketHealthy] Result: {isHealthy}");
+                return isHealthy;
             }
-            catch
+            catch (Exception ex)
             {
                 // Any exception means socket is not healthy
+                Console.WriteLine($"[IsSocketHealthy] Exception: {ex.Message}");
                 return false;
             }
         }

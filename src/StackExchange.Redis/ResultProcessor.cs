@@ -262,36 +262,46 @@ namespace StackExchange.Redis
                         // Check if MOVED points to same endpoint
                         bool isSameEndpoint = Equals(server?.EndPoint, endpoint);
                         
+                        Console.WriteLine($"[ResultProcessor] MOVED detected. isSameEndpoint: {isSameEndpoint}, server: {server?.EndPoint}, endpoint: {endpoint}");
+                        
                         if (isSameEndpoint && bridge != null)
                         {
                             // MOVED to same endpoint - server may have closed connection
                             // Check socket health before attempting retry
+                            Console.WriteLine($"[ResultProcessor] Same endpoint MOVED - checking socket health");
                             bool socketHealthy = connection.IsSocketHealthy();
+                            Console.WriteLine($"[ResultProcessor] Socket health check result: {socketHealthy}");
                             
                             if (!socketHealthy)
                             {
                                 // Socket is broken - don't attempt TryResend
                                 // Queue to backlog for retry after reconnection
+                                Console.WriteLine($"[ResultProcessor] Socket unhealthy - queueing to backlog");
                                 bridge.Multiplexer.Trace($"MOVED to same endpoint with unhealthy socket - queueing to backlog: {message.CommandAndKey}");
                                 
                                 if (bridge.Multiplexer.QueueToBacklogAndDisconnect(message, server))
                                 {
+                                    Console.WriteLine($"[ResultProcessor] Successfully queued to backlog");
                                     // Successfully queued to backlog
                                     return false; // Message will retry after reconnect
                                 }
+                                Console.WriteLine($"[ResultProcessor] Failed to queue to backlog - falling through to error");
                                 // If queueing failed, fall through to error handling below
                             }
                             else
                             {
                                 // Socket appears healthy - proceed with TryResend
                                 // This might be a legitimate same-endpoint MOVED (e.g., slot migration)
+                                Console.WriteLine($"[ResultProcessor] Socket healthy - attempting TryResend");
                                 bridge.Multiplexer.Trace($"MOVED to same endpoint with healthy socket - attempting TryResend: {message.CommandAndKey}");
                                 
                                 if (bridge.Multiplexer.TryResend(hashSlot, message, endpoint, isMoved))
                                 {
+                                    Console.WriteLine($"[ResultProcessor] TryResend succeeded");
                                     bridge.Multiplexer.Trace(message.Command + " re-issued to " + endpoint, isMoved ? "MOVED" : "ASK");
                                     return false;
                                 }
+                                Console.WriteLine($"[ResultProcessor] TryResend failed - falling through to error");
                                 // If TryResend failed, fall through to error handling
                             }
                         }

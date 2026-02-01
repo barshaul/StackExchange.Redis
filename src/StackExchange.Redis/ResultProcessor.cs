@@ -372,10 +372,6 @@ namespace StackExchange.Redis
                         }
                     }
                 }
-                            }
-                        }
-                    }
-                }
 
                 if (string.IsNullOrWhiteSpace(err))
                 {

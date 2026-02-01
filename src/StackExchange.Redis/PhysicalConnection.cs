@@ -84,6 +84,39 @@ namespace StackExchange.Redis
         private Socket? _socket;
         internal Socket? VolatileSocket => Volatile.Read(ref _socket);
 
+        /// <summary>
+        /// Checks if the underlying socket appears to be in a healthy state.
+        /// Uses Socket.Poll to detect if the socket has been closed.
+        /// This is a non-blocking check.
+        /// </summary>
+        /// <returns>True if socket appears healthy, false if likely closed/broken</returns>
+        internal bool IsSocketHealthy()
+        {
+            var socket = VolatileSocket;
+            if (socket == null) return false;
+            
+            try
+            {
+                // Socket.Poll with SelectMode.SelectRead checks if data is available to read
+                // If it returns true but Available == 0, the socket has been closed by remote
+                // Poll for 1 microsecond (effectively non-blocking)
+                bool readable = socket.Poll(1, SelectMode.SelectRead);
+                bool hasData = socket.Available > 0;
+                
+                // Socket is healthy if:
+                // - Not readable (no pending data), OR
+                // - Readable AND has data (normal case)
+                // Socket is broken if:
+                // - Readable BUT no data (socket closed)
+                return !readable || hasData;
+            }
+            catch
+            {
+                // Any exception means socket is not healthy
+                return false;
+            }
+        }
+
         public PhysicalConnection(PhysicalBridge bridge)
         {
             lastWriteTickCount = lastReadTickCount = Environment.TickCount;

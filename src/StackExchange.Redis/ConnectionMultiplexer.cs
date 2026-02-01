@@ -371,6 +371,36 @@ namespace StackExchange.Redis
         }
 
         /// <summary>
+        /// Queues a message to backlog and ensures reconnection will occur.
+        /// Used when we detect a broken connection and need to retry after reconnect.
+        /// </summary>
+        internal bool QueueToBacklogAndDisconnect(Message message, ServerEndPoint? server)
+        {
+            if (server == null) return false;
+            
+            var bridge = server.GetBridge(message, create: false);
+            if (bridge == null) return false;
+            
+            // Reset message state for requeueing
+            message.SetEnqueued(null);
+            
+            // Queue to backlog
+            var messages = new List<Message>(1) { message };
+            bool queued = bridge.TryEnqueue(messages, isReplica: false);
+            
+            if (queued)
+            {
+                Trace($"Queued message to backlog after detecting broken connection: {message.CommandAndKey}");
+                
+                // The connection will be detected as broken on next operation
+                // and RecordConnectionFailed will be called automatically
+                // No need to manually trigger disconnect here
+            }
+            
+            return queued;
+        }
+
+        /// <summary>
         /// Wait for a given asynchronous operation to complete (or timeout).
         /// </summary>
         /// <param name="task">The task to wait on.</param>

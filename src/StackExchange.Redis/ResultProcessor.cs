@@ -259,9 +259,45 @@ namespace StackExchange.Redis
                     if (Format.TryParseInt32(parts[1], out int hashSlot)
                         && Format.TryParseEndPoint(parts[2], out var endpoint))
                     {
-                        // no point sending back to same server, and no point sending to a dead server
-                        if (!Equals(server?.EndPoint, endpoint))
+                        // Check if MOVED points to same endpoint
+                        bool isSameEndpoint = Equals(server?.EndPoint, endpoint);
+                        
+                        if (isSameEndpoint && bridge != null)
                         {
+                            // MOVED to same endpoint - server may have closed connection
+                            // Check socket health before attempting retry
+                            bool socketHealthy = connection.IsSocketHealthy();
+                            
+                            if (!socketHealthy)
+                            {
+                                // Socket is broken - don't attempt TryResend
+                                // Queue to backlog for retry after reconnection
+                                bridge.Multiplexer.Trace($"MOVED to same endpoint with unhealthy socket - queueing to backlog: {message.CommandAndKey}");
+                                
+                                if (bridge.Multiplexer.QueueToBacklogAndDisconnect(message, server))
+                                {
+                                    // Successfully queued to backlog
+                                    return false; // Message will retry after reconnect
+                                }
+                                // If queueing failed, fall through to error handling below
+                            }
+                            else
+                            {
+                                // Socket appears healthy - proceed with TryResend
+                                // This might be a legitimate same-endpoint MOVED (e.g., slot migration)
+                                bridge.Multiplexer.Trace($"MOVED to same endpoint with healthy socket - attempting TryResend: {message.CommandAndKey}");
+                                
+                                if (bridge.Multiplexer.TryResend(hashSlot, message, endpoint, isMoved))
+                                {
+                                    bridge.Multiplexer.Trace(message.Command + " re-issued to " + endpoint, isMoved ? "MOVED" : "ASK");
+                                    return false;
+                                }
+                                // If TryResend failed, fall through to error handling
+                            }
+                        }
+                        else if (!isSameEndpoint)
+                        {
+                            // Different endpoint - normal TryResend flow
                             if (bridge is null)
                             {
                                 // already toast
@@ -273,6 +309,7 @@ namespace StackExchange.Redis
                             }
                             else
                             {
+                                // TryResend failed - generate error
                                 if (isMoved && wasNoRedirect)
                                 {
                                     if (bridge.Multiplexer.RawConfig.IncludeDetailInExceptions)
@@ -297,6 +334,44 @@ namespace StackExchange.Redis
                                         err = "Endpoint is not reachable at this point of time. Please check connectTimeout value. If it is low, try increasing it to give the ConnectionMultiplexer a chance to recover from the network disconnect. ";
                                     }
                                 }
+                            }
+                        }
+                        
+                        // If we get here (no bridge or operation failed), generate appropriate error
+                        if (bridge == null)
+                        {
+                            // Bridge is null - connection already lost
+                        }
+                        else if (string.IsNullOrEmpty(err))
+                        {
+                            // No error message set yet - must have failed for same-endpoint case
+                            if (isMoved && wasNoRedirect)
+                            {
+                                if (bridge.Multiplexer.RawConfig.IncludeDetailInExceptions)
+                                {
+                                    err = $"Key has MOVED to Endpoint {endpoint} and hashslot {hashSlot} but CommandFlags.NoRedirect was specified - redirect not followed for {message.CommandAndKey}. ";
+                                }
+                                else
+                                {
+                                    err = "Key has MOVED but CommandFlags.NoRedirect was specified - redirect not followed. ";
+                                }
+                            }
+                            else
+                            {
+                                unableToConnectError = true;
+                                if (bridge.Multiplexer.RawConfig.IncludeDetailInExceptions)
+                                {
+                                    err = $"Endpoint {endpoint} serving hashslot {hashSlot} is not reachable at this point of time. Please check connectTimeout value. If it is low, try increasing it to give the ConnectionMultiplexer a chance to recover from the network disconnect. "
+                                        + PerfCounterHelper.GetThreadPoolAndCPUSummary();
+                                }
+                                else
+                                {
+                                    err = "Endpoint is not reachable at this point of time. Please check connectTimeout value. If it is low, try increasing it to give the ConnectionMultiplexer a chance to recover from the network disconnect. ";
+                                }
+                            }
+                        }
+                    }
+                }
                             }
                         }
                     }

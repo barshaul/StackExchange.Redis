@@ -307,6 +307,7 @@ namespace StackExchange.Redis
 
         public void Dispose()
         {
+            Console.Error.WriteLine($"[DEBUG] PhysicalConnection.Dispose called on {this}");
             bool markDisposed = VolatileSocket != null;
             Shutdown();
             if (markDisposed)

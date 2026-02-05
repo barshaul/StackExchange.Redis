@@ -209,8 +209,17 @@ namespace StackExchange.Redis
         [Obsolete("prefer async")]
         public WriteResult TryWriteSync(Message message, bool isReplica)
         {
-            if (isDisposed) throw new ObjectDisposedException(Name);
-            if (!IsConnected) return QueueOrFailMessage(message);
+            Console.Error.WriteLine($"[DEBUG] TryWriteSync called: isDisposed={isDisposed}, IsConnected={IsConnected}, state={(State)state}");
+            if (isDisposed)
+            {
+                Console.Error.WriteLine("[DEBUG] TryWriteSync: throwing ObjectDisposedException");
+                throw new ObjectDisposedException(Name);
+            }
+            if (!IsConnected)
+            {
+                Console.Error.WriteLine("[DEBUG] TryWriteSync: NOT connected, calling QueueOrFailMessage");
+                return QueueOrFailMessage(message);
+            }
 
             var physical = this.physical;
             if (physical == null)
@@ -482,12 +491,14 @@ namespace StackExchange.Redis
 
         internal void OnDisconnected(ConnectionFailureType failureType, PhysicalConnection? connection, out bool isCurrent, out State oldState)
         {
+            Console.Error.WriteLine($"[DEBUG] OnDisconnected called: failureType={failureType}, connection={connection}, physical={physical}");
             Trace($"OnDisconnected: {failureType}");
 
             oldState = default(State); // only defined when isCurrent = true
             ConnectedAt = default;
             if (isCurrent = physical == connection)
             {
+                Console.Error.WriteLine($"[DEBUG] OnDisconnected: connection IS current, changing state to Disconnected");
                 Trace("Bridge noting disconnect from active connection" + (isDisposed ? " (disposed)" : ""));
                 oldState = ChangeState(State.Disconnected);
                 physical = null;
@@ -1448,6 +1459,7 @@ namespace StackExchange.Redis
 
         public PhysicalConnection? TryConnect(ILogger? log)
         {
+            Console.Error.WriteLine($"[DEBUG] TryConnect called: state={(State)state}, physical={physical?.ToString() ?? "null"}");
             if (state == (int)State.Disconnected)
             {
                 try
@@ -1467,6 +1479,7 @@ namespace StackExchange.Redis
                             physical.BeginConnectAsync(log).RedisFireAndForget();
                         }
                     }
+                    Console.Error.WriteLine("[DEBUG] TryConnect: Was disconnected, starting new connection, returning null");
                     return null;
                 }
                 catch (Exception ex)
@@ -1478,6 +1491,7 @@ namespace StackExchange.Redis
                     throw;
                 }
             }
+            Console.Error.WriteLine($"[DEBUG] TryConnect: Returning existing physical: {physical}");
             return physical;
         }
 

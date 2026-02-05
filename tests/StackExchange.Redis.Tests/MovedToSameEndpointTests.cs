@@ -83,6 +83,12 @@ public class MovedToSameEndpointTests
 
             await using var conn = await ConnectionMultiplexer.ConnectAsync(config);
             Console.Error.WriteLine("[TEST] Connected to Redis successfully");
+            
+            // Give time for async cluster detection to complete
+            Console.Error.WriteLine("[TEST] Waiting 100ms for cluster detection to complete...");
+            await Task.Delay(100);
+            Console.Error.WriteLine("[TEST] Wait complete, proceeding with test");
+            
             var db = conn.GetDatabase();
 
             // Record baseline counters after initial connection

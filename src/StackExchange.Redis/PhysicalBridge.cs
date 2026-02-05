@@ -48,7 +48,7 @@ namespace StackExchange.Redis
         private int failConnectCount = 0;
         private volatile bool isDisposed;
         private volatile bool shouldResetConnectionRetryCount;
-        private volatile bool _needsReconnect;
+        private bool _needsReconnect;
         private long nonPreferredEndpointCount;
 
         // private volatile int missedHeartbeats;
@@ -1483,7 +1483,7 @@ namespace StackExchange.Redis
                             // Clear the reconnect flag as we're starting a new connection
                             Console.Error.WriteLine($"[DEBUG] TryConnect: Clearing NeedsReconnect flag (was {NeedsReconnect})");
                             Volatile.Write(ref _needsReconnect, false);
-                            
+
                             Interlocked.Increment(ref socketCount);
                             Interlocked.Exchange(ref connectStartTicks, Environment.TickCount);
                             // separate creation and connection for case when connection completes synchronously

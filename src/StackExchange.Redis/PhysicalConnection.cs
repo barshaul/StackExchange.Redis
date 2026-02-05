@@ -2161,7 +2161,7 @@ namespace StackExchange.Redis
                         messageCount++;
                         Trace(result.ToString());
                         _readStatus = ReadStatus.MatchResult;
-                     isconn   MatchResult(result);
+                        MatchResult(result);
 
                         // Track the last result size *after* processing for the *next* error message
                         bytesInBuffer = buffer.Length;

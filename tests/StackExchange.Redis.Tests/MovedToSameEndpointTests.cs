@@ -47,13 +47,17 @@ public class MovedToSameEndpointTests
     [Fact]
     public async Task MovedToSameEndpoint_TriggersReconnectAndRetry_CommandSucceeds()
     {
+        Console.Error.WriteLine("[TEST] ========== Starting MovedToSameEndpoint test ==========");
+
         // Arrange: Get a free port to avoid conflicts when tests run in parallel
         var port = GetFreePort();
         var listenEndpoint = new IPEndPoint(IPAddress.Loopback, port);
+        Console.Error.WriteLine($"[TEST] Using port {port}, endpoint: {listenEndpoint}");
 
         var testServer = new MovedTestServer(
             getEndpoint: () => Format.ToString(listenEndpoint),
             triggerKey: "testkey");
+        Console.Error.WriteLine("[TEST] Created MovedTestServer with triggerKey='testkey'");
 
         var socketServer = new RespSocketServer(testServer);
 
@@ -62,11 +66,13 @@ public class MovedToSameEndpointTests
             // Start listening on the free port
             socketServer.Listen(listenEndpoint);
             testServer.SetActualEndpoint(listenEndpoint);
+            Console.Error.WriteLine($"[TEST] Server listening on {listenEndpoint}");
 
             // Wait a moment for the server to fully start
             await Task.Delay(100);
 
             // Act: Connect to the test server
+            Console.Error.WriteLine($"[TEST] Connecting to Redis at {listenEndpoint}...");
             var config = new ConfigurationOptions
             {
                 EndPoints = { listenEndpoint },
@@ -76,34 +82,45 @@ public class MovedToSameEndpointTests
             };
 
             await using var conn = await ConnectionMultiplexer.ConnectAsync(config);
+            Console.Error.WriteLine("[TEST] Connected to Redis successfully");
             var db = conn.GetDatabase();
 
             // Record baseline counters after initial connection
             var initialSetCmdCount = testServer.SetCmdCount;
             var initialMovedResponseCount = testServer.MovedResponseCount;
             var initialConnectionCount = testServer.ConnectionCount;
+            Console.Error.WriteLine($"[TEST] Baseline counters: SetCmd={initialSetCmdCount}, Moved={initialMovedResponseCount}, Connections={initialConnectionCount}");
 
             // Execute SET command: This should receive MOVED → reconnect → retry → succeed
+            Console.Error.WriteLine("[TEST] ========== Executing SET command (should trigger MOVED → reconnect → retry) ==========");
             var setResult = await db.StringSetAsync("testkey", "testvalue");
+            Console.Error.WriteLine($"[TEST] SET command completed with result: {setResult}");
 
             // Assert: Verify SET command succeeded
+            Console.Error.WriteLine("[TEST] Verifying results...");
             Assert.True(setResult, "SET command should return true (OK)");
+            Console.Error.WriteLine("[TEST] ✓ SET command returned true");
 
             // Verify the value was actually stored (proving retry succeeded)
             var retrievedValue = await db.StringGetAsync("testkey");
             Assert.Equal("testvalue", (string?)retrievedValue);
+            Console.Error.WriteLine($"[TEST] ✓ Retrieved value: '{retrievedValue}'");
 
             // Verify SET command was executed twice: once with MOVED response, once successfully
             var expectedSetCmdCount = initialSetCmdCount + 2;
             Assert.Equal(expectedSetCmdCount, testServer.SetCmdCount);
+            Console.Error.WriteLine($"[TEST] ✓ SetCmdCount = {testServer.SetCmdCount} (expected {expectedSetCmdCount})");
 
             // Verify MOVED response was returned exactly once
             var expectedMovedResponseCount = initialMovedResponseCount + 1;
             Assert.Equal(expectedMovedResponseCount, testServer.MovedResponseCount);
+            Console.Error.WriteLine($"[TEST] ✓ MovedResponseCount = {testServer.MovedResponseCount} (expected {expectedMovedResponseCount})");
 
             // Verify reconnection occurred: connection count should have increased by 1
             var expectedConnectionCount = initialConnectionCount + 1;
             Assert.Equal(expectedConnectionCount, testServer.ConnectionCount);
+            Console.Error.WriteLine($"[TEST] ✓ ConnectionCount = {testServer.ConnectionCount} (expected {expectedConnectionCount})");
+            Console.Error.WriteLine("[TEST] ========== Test completed successfully ==========");
         }
         finally
         {

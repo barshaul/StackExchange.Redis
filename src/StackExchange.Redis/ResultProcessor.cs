@@ -268,9 +268,7 @@ namespace StackExchange.Redis
                             // The MOVED error signals that the client should reconnect to allow the DNS/proxy/load balancer
                             // to route the connection to a different underlying server host, then retry the command.
                             // Mark the bridge to reconnect - reader loop will handle disconnection and reconnection.
-                            Console.Error.WriteLine($"[DEBUG] ResultProcessor: MOVED to same endpoint detected! endpoint={endpoint}, server={server?.EndPoint}, marking bridge for reconnect");
                             bridge?.MarkNeedsReconnect();
-                            Console.Error.WriteLine($"[DEBUG] ResultProcessor: Bridge marked for reconnect, NeedsReconnect={bridge?.NeedsReconnect}");
                         }
                         if (bridge is null)
                         {

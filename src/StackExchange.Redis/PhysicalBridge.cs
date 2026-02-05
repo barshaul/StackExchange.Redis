@@ -220,14 +220,12 @@ namespace StackExchange.Redis
         [Obsolete("prefer async")]
         public WriteResult TryWriteSync(Message message, bool isReplica)
         {
-            Console.Error.WriteLine($"[DEBUG] TryWriteSync: IsConnected={IsConnected}, NeedsReconnect={NeedsReconnect}, state={(State)state}");
             if (isDisposed)
             {
                 throw new ObjectDisposedException(Name);
             }
             if (!IsConnected || NeedsReconnect)
             {
-                Console.Error.WriteLine($"[DEBUG] TryWriteSync: Queuing message due to {(NeedsReconnect ? "NeedsReconnect" : "not connected")}");
                 return QueueOrFailMessage(message);
             }
 
@@ -501,14 +499,12 @@ namespace StackExchange.Redis
 
         internal void OnDisconnected(ConnectionFailureType failureType, PhysicalConnection? connection, out bool isCurrent, out State oldState)
         {
-            Console.Error.WriteLine($"[DEBUG] OnDisconnected: failureType={failureType}, NeedsReconnect={NeedsReconnect}, connection={connection}, physical={physical}");
             Trace($"OnDisconnected: {failureType}");
 
             oldState = default(State); // only defined when isCurrent = true
             ConnectedAt = default;
             if (isCurrent = physical == connection)
             {
-                Console.Error.WriteLine($"[DEBUG] OnDisconnected: connection IS current, changing state to Disconnected, will reconnect");
                 Trace("Bridge noting disconnect from active connection" + (isDisposed ? " (disposed)" : ""));
                 oldState = ChangeState(State.Disconnected);
                 physical = null;
@@ -1469,7 +1465,6 @@ namespace StackExchange.Redis
 
         public PhysicalConnection? TryConnect(ILogger? log)
         {
-            Console.Error.WriteLine($"[DEBUG] TryConnect: state={(State)state}, NeedsReconnect={NeedsReconnect}, physical={physical?.ToString() ?? "null"}");
             if (state == (int)State.Disconnected)
             {
                 try
@@ -1481,7 +1476,6 @@ namespace StackExchange.Redis
                         if (ChangeState(State.Disconnected, State.Connecting))
                         {
                             // Clear the reconnect flag as we're starting a new connection
-                            Console.Error.WriteLine($"[DEBUG] TryConnect: Clearing NeedsReconnect flag (was {NeedsReconnect})");
                             Volatile.Write(ref _needsReconnect, false);
 
                             Interlocked.Increment(ref socketCount);
@@ -1493,7 +1487,6 @@ namespace StackExchange.Redis
                             physical.BeginConnectAsync(log).RedisFireAndForget();
                         }
                     }
-                    Console.Error.WriteLine("[DEBUG] TryConnect: Starting new connection");
                     return null;
                 }
                 catch (Exception ex)
@@ -1505,7 +1498,6 @@ namespace StackExchange.Redis
                     throw;
                 }
             }
-            Console.Error.WriteLine($"[DEBUG] TryConnect: state={(State)state}, returning existing physical");
             return physical;
         }
 

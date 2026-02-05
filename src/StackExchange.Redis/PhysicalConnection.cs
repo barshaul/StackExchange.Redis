@@ -307,7 +307,6 @@ namespace StackExchange.Redis
 
         public void Dispose()
         {
-            Console.Error.WriteLine($"[DEBUG] PhysicalConnection.Dispose called on {this}");
             bool markDisposed = VolatileSocket != null;
             Shutdown();
             if (markDisposed)
@@ -2096,9 +2095,6 @@ namespace StackExchange.Redis
                     var bridge = BridgeCouldBeNull;
                     if (bridge?.NeedsReconnect == true)
                     {
-                        Console.Error.WriteLine($"[DEBUG] ReadFromPipe: NeedsReconnect flag detected!");
-                        Console.Error.WriteLine($"[DEBUG] ReadFromPipe: IsConnected={bridge.IsConnected}, ConnectionState={bridge.ConnectionState}");
-                        Console.Error.WriteLine($"[DEBUG] ReadFromPipe: Breaking out of read loop to trigger reconnection");
                         Trace("Bridge marked for reconnection, exiting reader loop");
                         break; // Exit cleanly to trigger reconnection
                     }

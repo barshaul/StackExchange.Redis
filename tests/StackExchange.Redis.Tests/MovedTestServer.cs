@@ -59,7 +59,6 @@ public class MovedTestServer : MemoryCacheRedisServer
         var assignedHost = _currentServerHost;
         _clientHostAssignments[client] = assignedHost;
         Interlocked.Increment(ref _connectionCount);
-        Console.Error.WriteLine($"[MovedTestServer] New client connection #{_connectionCount} established (assigned to {assignedHost}), endpoint: {_actualEndpoint}");
         Log($"New client connection established (assigned to {assignedHost}, total connections: {_connectionCount}), endpoint: {_actualEndpoint}");
         return client;
     }
@@ -77,7 +76,6 @@ public class MovedTestServer : MemoryCacheRedisServer
             ? "# Cluster\r\ncluster_enabled:1\r\n"
             : "# Server\r\nredis_version:7.0.0\r\n# Cluster\r\ncluster_enabled:1\r\n";
 
-        Console.Error.WriteLine($"[MovedTestServer] INFO command, section={section ?? "all"}, returning cluster_enabled:1");
         Log($"Returning INFO response (cluster_enabled:1), endpoint: {_actualEndpoint}");
 
         return TypedRedisValue.BulkString(infoResponse);
@@ -98,7 +96,6 @@ public class MovedTestServer : MemoryCacheRedisServer
         // Handle CLUSTER SLOTS command to support cluster mode
         if (subcommand.Equals("SLOTS", StringComparison.OrdinalIgnoreCase))
         {
-            Console.Error.WriteLine($"[MovedTestServer] CLUSTER SLOTS command, endpoint: {_actualEndpoint}");
             Log($"Returning CLUSTER SLOTS response, endpoint: {_actualEndpoint}");
             return GetClusterSlotsResponse();
         }
@@ -106,7 +103,6 @@ public class MovedTestServer : MemoryCacheRedisServer
         // Handle CLUSTER NODES command
         if (subcommand.Equals("NODES", StringComparison.OrdinalIgnoreCase))
         {
-            Console.Error.WriteLine($"[MovedTestServer] CLUSTER NODES command, endpoint: {_actualEndpoint}");
             Log($"Returning CLUSTER NODES response, endpoint: {_actualEndpoint}");
             return GetClusterNodesResponse();
         }
@@ -131,7 +127,6 @@ public class MovedTestServer : MemoryCacheRedisServer
             throw new InvalidOperationException("Client host assignment not found - this indicates a test infrastructure error");
         }
 
-        Console.Error.WriteLine($"[MovedTestServer] SET command #{cmdNum} for key '{key}' from {clientHost} client");
 
         // Check if this is the trigger key from an old server client
         if (key == _triggerKey && clientHost == SimulatedHost.OldServer)
@@ -141,8 +136,6 @@ public class MovedTestServer : MemoryCacheRedisServer
 
             var movedNum = Interlocked.Increment(ref _movedResponseCount);
             var endpoint = _getEndpoint();
-            Console.Error.WriteLine($"[MovedTestServer] *** MOVED #{movedNum}: Returning MOVED {_hashSlot} {endpoint} for key '{key}' ***");
-            Console.Error.WriteLine($"[MovedTestServer] Server state transitioned: {SimulatedHost.OldServer} -> {SimulatedHost.NewServer}");
             Log($"Returning MOVED {_hashSlot} {endpoint} for key '{key}' from {clientHost} client, server transitioned to {SimulatedHost.NewServer}, actual endpoint: {_actualEndpoint}");
 
             // Return MOVED error pointing to same endpoint
@@ -150,7 +143,6 @@ public class MovedTestServer : MemoryCacheRedisServer
         }
 
         // Normal processing for new server clients or other keys
-        Console.Error.WriteLine($"[MovedTestServer] SET command #{cmdNum} processed normally for key '{key}' from {clientHost} client");
         Log($"Processing SET normally for key '{key}' from {clientHost} client, endpoint: {_actualEndpoint}");
         return base.Set(client, request);
     }

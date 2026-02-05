@@ -84,10 +84,14 @@ public class MovedToSameEndpointTests
             await using var conn = await ConnectionMultiplexer.ConnectAsync(config);
             Console.Error.WriteLine("[TEST] Connected to Redis successfully");
             
-            // Give time for async cluster detection to complete
-            Console.Error.WriteLine("[TEST] Waiting 100ms for cluster detection to complete...");
-            await Task.Delay(100);
-            Console.Error.WriteLine("[TEST] Wait complete, proceeding with test");
+            // Ping the server to ensure it's responsive (pattern from ClusterTests)
+            var server = conn.GetServer(listenEndpoint);
+            await server.PingAsync();
+            Console.Error.WriteLine($"[TEST] Ping successful. ServerType: {server.ServerType}");
+            
+            // Verify server is detected as cluster mode
+            Assert.Equal(ServerType.Cluster, server.ServerType);
+            Console.Error.WriteLine("[TEST] ✓ Server correctly detected as Cluster mode");
             
             var db = conn.GetDatabase();
 

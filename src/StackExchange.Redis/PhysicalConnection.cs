@@ -2092,6 +2092,17 @@ namespace StackExchange.Redis
                     Trace($"Processed {handled} messages");
                     input.AdvanceTo(buffer.Start, buffer.End);
 
+                    // Check if the bridge has been marked for reconnection (e.g., MOVED to same endpoint)
+                    var bridge = BridgeCouldBeNull;
+                    if (bridge?.NeedsReconnect == true)
+                    {
+                        Console.Error.WriteLine($"[DEBUG] ReadFromPipe: NeedsReconnect flag detected!");
+                        Console.Error.WriteLine($"[DEBUG] ReadFromPipe: IsConnected={bridge.IsConnected}, ConnectionState={bridge.ConnectionState}");
+                        Console.Error.WriteLine($"[DEBUG] ReadFromPipe: Breaking out of read loop to trigger reconnection");
+                        Trace("Bridge marked for reconnection, exiting reader loop");
+                        break; // Exit cleanly to trigger reconnection
+                    }
+
                     if (handled == 0 && readResult.IsCompleted)
                     {
                         break; // no more data, or trailing incomplete messages
@@ -2150,7 +2161,7 @@ namespace StackExchange.Redis
                         messageCount++;
                         Trace(result.ToString());
                         _readStatus = ReadStatus.MatchResult;
-                        MatchResult(result);
+                     isconn   MatchResult(result);
 
                         // Track the last result size *after* processing for the *next* error message
                         bytesInBuffer = buffer.Length;

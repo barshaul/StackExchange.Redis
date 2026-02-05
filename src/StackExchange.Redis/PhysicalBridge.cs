@@ -48,6 +48,7 @@ namespace StackExchange.Redis
         private int failConnectCount = 0;
         private volatile bool isDisposed;
         private volatile bool shouldResetConnectionRetryCount;
+        private volatile bool _needsReconnect;
         private long nonPreferredEndpointCount;
 
         // private volatile int missedHeartbeats;
@@ -131,6 +132,16 @@ namespace StackExchange.Redis
         private RedisProtocol _protocol; // note starts at zero, not RESP2
         internal void SetProtocol(RedisProtocol protocol) => _protocol = protocol;
 
+        /// <summary>
+        /// Indicates whether the bridge needs to reconnect (e.g., for MOVED to same endpoint).
+        /// </summary>
+        internal bool NeedsReconnect => Volatile.Read(ref _needsReconnect);
+
+        /// <summary>
+        /// Marks that the bridge needs to reconnect, which will be handled by the reader loop.
+        /// </summary>
+        internal void MarkNeedsReconnect() => Volatile.Write(ref _needsReconnect, true);
+
         public void Dispose()
         {
             isDisposed = true;
@@ -209,15 +220,14 @@ namespace StackExchange.Redis
         [Obsolete("prefer async")]
         public WriteResult TryWriteSync(Message message, bool isReplica)
         {
-            Console.Error.WriteLine($"[DEBUG] TryWriteSync called: isDisposed={isDisposed}, IsConnected={IsConnected}, state={(State)state}");
+            Console.Error.WriteLine($"[DEBUG] TryWriteSync: IsConnected={IsConnected}, NeedsReconnect={NeedsReconnect}, state={(State)state}");
             if (isDisposed)
             {
-                Console.Error.WriteLine("[DEBUG] TryWriteSync: throwing ObjectDisposedException");
                 throw new ObjectDisposedException(Name);
             }
-            if (!IsConnected)
+            if (!IsConnected || NeedsReconnect)
             {
-                Console.Error.WriteLine("[DEBUG] TryWriteSync: NOT connected, calling QueueOrFailMessage");
+                Console.Error.WriteLine($"[DEBUG] TryWriteSync: Queuing message due to {(NeedsReconnect ? "NeedsReconnect" : "not connected")}");
                 return QueueOrFailMessage(message);
             }
 
@@ -243,7 +253,7 @@ namespace StackExchange.Redis
         public ValueTask<WriteResult> TryWriteAsync(Message message, bool isReplica, bool bypassBacklog = false)
         {
             if (isDisposed) throw new ObjectDisposedException(Name);
-            if (!IsConnected && !bypassBacklog) return new ValueTask<WriteResult>(QueueOrFailMessage(message));
+            if ((!IsConnected || NeedsReconnect) && !bypassBacklog) return new ValueTask<WriteResult>(QueueOrFailMessage(message));
 
             var physical = this.physical;
             if (physical == null)
@@ -491,14 +501,14 @@ namespace StackExchange.Redis
 
         internal void OnDisconnected(ConnectionFailureType failureType, PhysicalConnection? connection, out bool isCurrent, out State oldState)
         {
-            Console.Error.WriteLine($"[DEBUG] OnDisconnected called: failureType={failureType}, connection={connection}, physical={physical}");
+            Console.Error.WriteLine($"[DEBUG] OnDisconnected: failureType={failureType}, NeedsReconnect={NeedsReconnect}, connection={connection}, physical={physical}");
             Trace($"OnDisconnected: {failureType}");
 
             oldState = default(State); // only defined when isCurrent = true
             ConnectedAt = default;
             if (isCurrent = physical == connection)
             {
-                Console.Error.WriteLine($"[DEBUG] OnDisconnected: connection IS current, changing state to Disconnected");
+                Console.Error.WriteLine($"[DEBUG] OnDisconnected: connection IS current, changing state to Disconnected, will reconnect");
                 Trace("Bridge noting disconnect from active connection" + (isDisposed ? " (disposed)" : ""));
                 oldState = ChangeState(State.Disconnected);
                 physical = null;
@@ -1459,7 +1469,7 @@ namespace StackExchange.Redis
 
         public PhysicalConnection? TryConnect(ILogger? log)
         {
-            Console.Error.WriteLine($"[DEBUG] TryConnect called: state={(State)state}, physical={physical?.ToString() ?? "null"}");
+            Console.Error.WriteLine($"[DEBUG] TryConnect: state={(State)state}, NeedsReconnect={NeedsReconnect}, physical={physical?.ToString() ?? "null"}");
             if (state == (int)State.Disconnected)
             {
                 try
@@ -1470,6 +1480,10 @@ namespace StackExchange.Redis
                         Multiplexer.Trace("Connecting...", Name);
                         if (ChangeState(State.Disconnected, State.Connecting))
                         {
+                            // Clear the reconnect flag as we're starting a new connection
+                            Console.Error.WriteLine($"[DEBUG] TryConnect: Clearing NeedsReconnect flag (was {NeedsReconnect})");
+                            Volatile.Write(ref _needsReconnect, false);
+                            
                             Interlocked.Increment(ref socketCount);
                             Interlocked.Exchange(ref connectStartTicks, Environment.TickCount);
                             // separate creation and connection for case when connection completes synchronously
@@ -1479,7 +1493,7 @@ namespace StackExchange.Redis
                             physical.BeginConnectAsync(log).RedisFireAndForget();
                         }
                     }
-                    Console.Error.WriteLine("[DEBUG] TryConnect: Was disconnected, starting new connection, returning null");
+                    Console.Error.WriteLine("[DEBUG] TryConnect: Starting new connection");
                     return null;
                 }
                 catch (Exception ex)
@@ -1491,7 +1505,7 @@ namespace StackExchange.Redis
                     throw;
                 }
             }
-            Console.Error.WriteLine($"[DEBUG] TryConnect: Returning existing physical: {physical}");
+            Console.Error.WriteLine($"[DEBUG] TryConnect: state={(State)state}, returning existing physical");
             return physical;
         }
 
